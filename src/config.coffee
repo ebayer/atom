@@ -563,7 +563,7 @@ class Config
     if scopeSelector?
       @setRawScopedValue(source, scopeSelector, keyPath, value)
     else
-      @setRawValue(keyPath, value)
+      @setRawValue(source, keyPath, value)
 
     @save() unless @configFileHasErrors
     true
@@ -665,7 +665,7 @@ class Config
   # defaults. Returns the scoped settings when a `scopeSelector` is specified.
   getSettings: ->
     Grim.deprecate "Use ::get(keyPath) instead"
-    _.deepExtend({}, @settings, @defaultSettings)
+    _.deepExtend({}, @defaultSettings, @scopedSettingsStore.getProperties('.xxx')...)
 
   # Extended: Get the {String} path to the config file being used.
   getUserConfigPath: ->
@@ -822,7 +822,7 @@ class Config
           continue unless value.hasOwnProperty(key)
           unsetUnspecifiedValues(keys.concat([key]).join('.'), childValue)
       else
-        @setRawValue(keyPath, undefined) unless _.valueForKeyPath(newSettings, keyPath)?
+        @setRawValue(@getUserConfigPath(), keyPath, undefined) unless _.valueForKeyPath(newSettings, keyPath)?
       return
 
     @setRecursive(null, newSettings)
@@ -837,13 +837,12 @@ class Config
     else
       try
         value = @makeValueConformToSchema(keyPath, value)
-        @setRawValue(keyPath, value)
+        @setRawValue(@getUserConfigPath(), keyPath, value)
       catch e
         console.warn("'#{keyPath}' could not be set. Attempted value: #{JSON.stringify(value)}; Schema: #{JSON.stringify(@getSchema(keyPath))}")
 
   getRawValue: (keyPath, options) ->
-    unless options?.excludeSources?.indexOf(@getUserConfigPath()) >= 0
-      value = _.valueForKeyPath(@settings, keyPath)
+    value = @getRawScopedValue(['xxx'], keyPath, options)
     unless options?.sources?.length > 0
       defaultValue = _.valueForKeyPath(@defaultSettings, keyPath)
 
@@ -855,12 +854,12 @@ class Config
 
     value
 
-  setRawValue: (keyPath, value) ->
+  setRawValue: (source, keyPath, value) ->
     defaultValue = _.valueForKeyPath(@defaultSettings, keyPath)
     value = undefined if _.isEqual(defaultValue, value)
 
     oldValue = _.clone(@get(keyPath))
-    _.setValueForKeyPath(@settings, keyPath, value)
+    @setRawScopedValue(source, '*', keyPath, value)
     newValue = @get(keyPath)
     @emitter.emit 'did-change', {oldValue, newValue, keyPath} unless _.isEqual(newValue, oldValue)
 
@@ -959,7 +958,7 @@ class Config
   setRawScopedValue: (source, selector, keyPath, value) ->
     if keyPath?
       newValue = {}
-      _.setValueForKeyPath(newValue, keyPath, value)
+      setValueAtKeyPath(newValue, keyPath, value)
       value = newValue
 
     settingsBySelector = {}
@@ -1108,6 +1107,21 @@ splitKeyPath = (keyPath) ->
       startIndex = i + 1
   keyPathArray.push keyPath.substr(startIndex, keyPath.length)
   keyPathArray
+
+getValueAtKeyPath = (object, keyPath) ->
+  keys = splitKeyPath(keyPath)
+  for key in keys
+    object = object[key]
+    return unless object?
+  object
+
+setValueAtKeyPath = (object, keyPath, value) ->
+  keys = splitKeyPath(keyPath)
+  while keys.length > 1
+    key = keys.shift()
+    object[key] ?= {}
+    object = object[key]
+  object[keys.shift()] = value
 
 withoutEmptyObjects = (object) ->
   resultObject = undefined
