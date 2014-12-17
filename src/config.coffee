@@ -614,6 +614,19 @@ class Config
   getUserConfigPath: ->
     @configFilePath
 
+  # Extended: Suppress calls to handler functions registered with {::onDidChange}
+  # and {::observe} until {::resumeEvents} is called. At that point, all handlers
+  # will be called once if the value for their key-path has changed since events
+  # were paused.
+  pauseEvents: ->
+    @eventsPaused = true
+
+  # Extended: Resume calling of handler functions registered with {::onDidChange}
+  # and {::observe}. See {::pauseEvents}.
+  resumeEvents: ->
+    @eventsPaused = false
+    @emitChangeEvent()
+
   ###
   Section: Deprecated
   ###
@@ -749,7 +762,7 @@ class Config
   resetUserSettings: (newSettings) ->
     unless isPlainObject(newSettings)
       @settings = {}
-      @emitter.emit 'did-change'
+      @emitChangeEvent()
       return
 
     if newSettings.global?
@@ -801,7 +814,7 @@ class Config
     value = undefined if _.isEqual(defaultValue, value)
 
     _.setValueForKeyPath(@settings, keyPath, value)
-    @emitter.emit 'did-change'
+    @emitChangeEvent()
 
   observeKeyPath: (keyPath, options, callback) ->
     callback(@get(keyPath))
@@ -825,7 +838,7 @@ class Config
 
   setRawDefault: (keyPath, value) ->
     _.setValueForKeyPath(@defaultSettings, keyPath, value)
-    @emitter.emit 'did-change'
+    @emitChangeEvent()
 
   setDefaults: (keyPath, defaults) ->
     if defaults? and isPlainObject(defaults)
@@ -883,20 +896,23 @@ class Config
   Section: Private Scoped Settings
   ###
 
+  emitChangeEvent: ->
+    @emitter.emit 'did-change' unless @eventsPaused
+
   resetUserScopedSettings: (newScopedSettings) ->
     @usersScopedSettings?.dispose()
     @usersScopedSettings = new CompositeDisposable
     @usersScopedSettings.add @scopedSettingsStore.addProperties('user-config', newScopedSettings, @usersScopedSettingPriority)
-    @emitter.emit 'did-change'
+    @emitChangeEvent()
 
   addScopedSettings: (source, selector, value, options) ->
     settingsBySelector = {}
     settingsBySelector[selector] = value
     disposable = @scopedSettingsStore.addProperties(source, settingsBySelector, options)
-    @emitter.emit 'did-change'
+    @emitChangeEvent()
     new Disposable =>
       disposable.dispose()
-      @emitter.emit 'did-change'
+      @emitChangeEvent()
 
   setRawScopedValue: (selector, keyPath, value) ->
     if keyPath?
@@ -907,7 +923,7 @@ class Config
     settingsBySelector = {}
     settingsBySelector[selector] = value
     @usersScopedSettings.add @scopedSettingsStore.addProperties('user-config', settingsBySelector, @usersScopedSettingPriority)
-    @emitter.emit 'did-change'
+    @emitChangeEvent()
 
   getRawScopedValue: (scopeDescriptor, keyPath) ->
     scopeDescriptor = ScopeDescriptor.fromObject(scopeDescriptor)

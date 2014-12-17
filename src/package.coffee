@@ -199,7 +199,10 @@ class Package
       grammar.activate() for grammar in @grammars
       @grammarsActivated = true
 
+    atom.config.pauseEvents()
     scopedProperties.activate() for scopedProperties in @scopedProperties
+    atom.config.resumeEvents()
+
     @scopedPropertiesActivated = true
 
   loadKeymaps: ->
@@ -328,7 +331,9 @@ class Package
 
   deactivateResources: ->
     grammar.deactivate() for grammar in @grammars
+    atom.config.pauseEvents()
     scopedProperties.deactivate() for scopedProperties in @scopedProperties
+    atom.config.resumeEvents()
     @stylesheetDisposables?.dispose()
     @activationDisposables?.dispose()
     @stylesheetsActivated = false
